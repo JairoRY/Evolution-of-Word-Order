@@ -112,8 +112,7 @@ void analyzeFile(const fs::path& filePath, std::map<std::string, int>& counts) {
 
 // --- 5. Main function to iterate through files and print results ---
 int main() {
-    // IMPORTANT: Replace "./corpus" with the actual path to your directory
-    std::string directoryPath = "./corpus_files";
+    std::string directoryPath = "./LUCYrf/CorrRF";
     std::map<std::string, int> patternCounts = { {"SOV", 0}, {"SVO", 0}, {"VSO", 0} };
 
     // Check if directory exists

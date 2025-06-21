@@ -1,4 +1,4 @@
-# Evolution-of-Word-Order
+# Evolution of Word Order
 This project analyzes and contrasts the syntactic word order of Old English and Modern English by processing text from two distinct corpora; it extracts the frequencies of the six possible orderings of Subject (S), Verb (V), and Object (O) to highlight linguistic changes over time.
 
 The analysis is performed by two C++ programs, one for each corpus, which generate statistical data. An R script then consumes this data to produce a series of comparative visualizations.
@@ -15,7 +15,7 @@ The analysis is performed by two C++ programs, one for each corpus, which genera
 
 ## Prerequisites
 
-1.  **Corpus Data**: This project requires access to the PCEEC and Susanne corpora. The code expects them to be in the following directory structure:
+1.  **Corpus Data**: This project requires access to the PCEEC (https://github.com/beatrice57/pceec2) and Susanne (https://www.grsampson.net/bufPageSue.html) corpora. Since PCEEC is a GitHub repository we have to click "Code > Download ZIP". Once downloaded from the indicated links they have to be unzipped in the working directory. The code expects them to be in the following directory structure:
     * `pceec2-main/data/parsed/` 
     * `SUSANNE/fc2/`
 

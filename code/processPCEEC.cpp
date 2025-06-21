@@ -122,7 +122,6 @@ int main() {
     }
 
     csv.close(); 
-    cout << "\nCSV saved to word_order_stats_PCEEC.csv\n"; 
 
     return 0;
 }

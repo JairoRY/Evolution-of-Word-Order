@@ -5,7 +5,7 @@ The analysis is performed by two C++ programs, one for each corpus, which genera
 
 ## Project Components
 
-**`processPCEEC.cpp`**: A C++ program that parses syntactic tree data from the Penn-Cambridge Edition of the Paston Letters (PCEEC), that represent an older form of English. It identifies sentence constituents (subject, verb, object) using regular expressions on phrase labels (e.g., `NP-SBJ`, `VB`, `NP-OB1`) to determine the word order. Its output is `word_order_stats_PCEEC.csv`.
+* **`processPCEEC.cpp`**: A C++ program that parses syntactic tree data from the Penn-Cambridge Edition of the Paston Letters (PCEEC), that represent an older form of English. It identifies sentence constituents (subject, verb, object) using regular expressions on phrase labels (e.g., `NP-SBJ`, `VB`, `NP-OB1`) to determine the word order. Its output is `word_order_stats_PCEEC.csv`.
 
 * **`processSusanne.cpp`**: A C++ program that processes files from the Susanne Corpus, which is annotated for syntactic structure and represents Modern English. It tracks clause boundaries and functional roles (`:s` for subject, `:o` for object) to identify constituent order. Its output is `word_order_stats_Susanne.csv`.
 

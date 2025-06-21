@@ -25,8 +25,9 @@ static string detectOrder(const string& tree) {
     regex subj(R"(\(NP-SBJ\b)");                 
     regex verb(R"(\((VB[DPZGN]?|BE[DPN]|BAG|HV[PDZ]?)\b)"); 
     regex obj (R"(\(NP-OB1\b|\(NP-OBJ\b)");    
-    regex prd (R"(\((NP|ADJP|PP)-PRD\b)");        
-
+    //regex prd (R"(\((NP|ADJP|PP)-PRD\b)");        
+    regex prd(R"(\(\s*(?:NP|ADJP|PP)-PRD\b)");
+    
     for (sregex_iterator it(tree.begin(),tree.end(),subj), end; it!=end; ++it)
         elements.emplace_back('S', it->position());
     for (sregex_iterator it(tree.begin(),tree.end(),verb), end; it!=end; ++it)

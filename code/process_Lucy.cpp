@@ -1,137 +1,120 @@
 #include <iostream>
-#include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <vector>
 #include <string>
-#include <regex> 
+#include <regex>
 #include <map>
+#include <set>
+#include <vector>
+#include <filesystem>
+#include <algorithm>
 
 namespace fs = std::filesystem;
+using namespace std;
 
-struct TokenData {
-    std::string id;
-    std::string posTag;
-    std::string wordForm;
-    std::string lemma;
-    std::string syntacticAnnotation;
-    std::string roleHint;            // "S", "V", "O", or empty/other based on heuristic
-};
-
-TokenData parseTokenLine(const std::string& line) {
-    TokenData token;
-    std::stringstream ss(line);
-    std::string temp; 
-
-  
-    ss >> token.id >> temp >> token.posTag >> token.wordForm >> token.lemma;
-
-    size_t annotationStart = line.find('[');
-    if (annotationStart != std::string::npos) {
-        token.syntacticAnnotation = line.substr(annotationStart);
-    } else {
-        token.syntacticAnnotation = ""; // No annotation found
-    }
-    return token;
+// Trim whitespace
+string trim(const string& s) {
+    size_t start = s.find_first_not_of(" \t\n\r");
+    size_t end = s.find_last_not_of(" \t\n\r");
+    return (start == string::npos) ? "" : s.substr(start, end - start + 1);
 }
 
-/
-std::string inferRoleHint(const TokenData& token) {
-    // Look for explicit 'S' or 'O' in the bracketed annotation
-    if (token.syntacticAnnotation.find("[S") != std::string::npos) {
-        return "S";
-    }
-    if (token.syntacticAnnotation.find("[O") != std::string::npos) {
-        return "O";
-    }
-
-    if (token.posTag.rfind("VV", 0) == 0 ||
-        token.posTag.rfind("VB", 0) == 0 || 
-        token.posTag == "MD")               
-    {
-        return "V";
+// Detect SVO order from SUSANNE-like parsed text
+string detectOrderFromSUSANNE(const string& tree) {
+    vector<string> lines;
+    stringstream ss(tree);
+    string line;
+    while (getline(ss, line)) {
+        lines.push_back(line);
     }
 
-    // Default: if no clear S, O, or V role hint found
-    return ""; // Or "X" for unknown/other
+    vector<pair<char, size_t>> elements;
+
+    // More forgiving regex for subject/object and verb tags
+    regex subjectTag(R"(:[sS]\b)");
+    regex objectTag(R"(:[oO]\b)");
+    regex verbPOS(R"(\tV[BDZGNP][A-Za-z]*\t)");
+
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const string& line = lines[i];
+
+        // Split line into tab-separated fields
+        vector<string> fields;
+        stringstream lineStream(line);
+        string token;
+        while (getline(lineStream, token, '\t')) {
+            fields.push_back(token);
+        }
+
+        if (fields.size() < 6) continue;
+
+        string posTag = fields[3];     // POS tag field
+        string parseField = fields[5]; // Parse field
+
+        if (regex_search(parseField, subjectTag)) {
+            elements.emplace_back('S', i);
+        } else if (regex_search(parseField, objectTag)) {
+            elements.emplace_back('O', i);
+        } else if (regex_match("\t" + posTag + "\t", verbPOS)) {
+            elements.emplace_back('V', i);
+        }
+    }
+
+    // Sort elements by line position
+    sort(elements.begin(), elements.end(), [](auto& a, auto& b) {
+        return a.second < b.second;
+    });
+
+    // Construct order string without duplicates
+    string order;
+    set<char> seen;
+    for (auto& [ch, _] : elements) {
+        if (!seen.count(ch)) {
+            order += ch;
+            seen.insert(ch);
+        }
+    }
+
+    return (order.size() == 3) ? order : "";
 }
 
-
-// --- 4. Main analysis function for each file ---
-void analyzeFile(const fs::path& filePath, std::map<std::string, int>& counts) {
-    std::ifstream file(filePath);
-    std::string line;
-    std::vector<TokenData> currentSentenceTokens; // Store parsed tokens for the current sentence
-
-    while (std::getline(file, line)) {
-        // Skip empty lines or lines that are not part of token sequence
-        if (line.empty() || line.find("--- PAGE") != std::string::npos ||
-            line.find("ANNUAL REVIEWS") != std::string::npos || // Skip document metadata lines if needed
-            line.find("Keywords") != std::string::npos ||
-            line.find("Abstract") != std::string::npos) {
-            continue;
-        }
-
-        // Check for sentence start/end markers
-        if (line.find("<s>") != std::string::npos) {
-            currentSentenceTokens.clear(); // Clear tokens for the new sentence
-            continue;
-        }
-        if (line.find("</s>") != std::string::npos) {
-            // --- Process the completed sentence for patterns ---
-            // Extract the sequence of role hints for this sentence
-            std::vector<std::string> rolesInSentence;
-            for (const auto& token : currentSentenceTokens) {
-                if (!token.roleHint.empty()) { // Only consider tokens with an S, V, or O hint
-                    rolesInSentence.push_back(token.roleHint);
-                }
-            }
-
-            // Look for SVO, SOV, VSO trigrams in the sequence of role hints
-            for (size_t i = 0; i + 2 < rolesInSentence.size(); ++i) {
-                std::string trigram = rolesInSentence[i] + rolesInSentence[i+1] + rolesInSentence[i+2];
-                if (trigram == "SOV") {
-                    counts["SOV"]++;
-                } else if (trigram == "SVO") {
-                    counts["SVO"]++;
-                } else if (trigram == "VSO") {
-                    counts["VSO"]++;
-                }
-            }
-
-            currentSentenceTokens.clear(); // Clear for the next sentence
-            continue;
-        }
-
-        // If it's a token line, parse it
-        TokenData parsedToken = parseTokenLine(line);
-        parsedToken.roleHint = inferRoleHint(parsedToken); // Infer the role hint
-        currentSentenceTokens.push_back(parsedToken);
-    }
-}
-
-// --- 5. Main function to iterate through files and print results ---
 int main() {
-    std::string directoryPath = "./LUCYrf/CorrRF";
-    std::map<std::string, int> patternCounts = { {"SOV", 0}, {"SVO", 0}, {"VSO", 0} };
+    map<string, int> orderCounts;
+    int total = 0;
 
-    // Check if directory exists
-    if (!fs::exists(directoryPath) || !fs::is_directory(directoryPath)) {
-        std::cerr << "Error: Directory '" << directoryPath << "' does not exist or is not a directory.\n";
-        return 1; // Indicate error
-    }
-    
-    for (const auto& entry : fs::directory_iterator(directoryPath)) {
-        if (entry.is_regular_file() && entry.path().extension() == ".vrt") { // Ensure it's a .vrt file
-            std::cout << "Analyzing file: " << entry.path().filename() << "\n";
-            analyzeFile(entry.path(), patternCounts);
+    string dirPath = "pceec2-main/data/parsed/";
+    for (const auto& entry : fs::directory_iterator(dirPath)) {
+        if (!entry.is_regular_file()) continue;
+
+        ifstream infile(entry.path());
+        if (!infile) {
+            cerr << "Failed to open file: " << entry.path() << endl;
+            continue;
+        }
+
+        string line, buffer;
+        while (getline(infile, line)) {
+            buffer += line + "\n"; // preserve line breaks
+            if (line.find("))") != string::npos) {  // crude sentence boundary
+                string tree = trim(buffer);
+                string order = detectOrderFromSUSANNE(tree);
+                if (order.size() == 3) {
+                    orderCounts[order]++;
+                    total++;
+                }
+                buffer.clear();
+            }
         }
     }
 
-    std::cout << "\n--- Pattern Counts ---\n";
-    std::cout << "SOV: " << patternCounts["SOV"] << "\n";
-    std::cout << "SVO: " << patternCounts["SVO"] << "\n";
-    std::cout << "VSO: " << patternCounts["VSO"] << "\n";
+    // Print results
+    cout << "Word Order Statistics:\n";
+    vector<string> allOrders = {"SVO", "SOV", "VSO", "VOS", "OVS", "OSV"};
+    for (const string& order : allOrders) {
+        int count = orderCounts[order];
+        double percent = (total > 0) ? 100.0 * count / total : 0.0;
+        cout << order << ": " << count << " (" << percent << "%)\n";
+    }
 
     return 0;
 }

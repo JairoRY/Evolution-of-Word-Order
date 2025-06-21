@@ -16,10 +16,12 @@ using namespace std;
 
 // Define clause-level tags more precisely based on the provided legend.
 // These are the tags that indicate a complete clause structure, not just any phrase.
-// REVERTING TO ORIGINAL SPECIFIC CLAUSE TAGS, as broadening led to pushing non-clause tags.
 const string CLAUSE_TAG_PATTERN = "S|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L";
-const regex clauseStartRegex(R"(\[(" + CLAUSE_TAG_PATTERN + R")\b)"); // e.g., [S, [Fa
-const regex clauseEndRegex(R"(\b(" + CLAUSE_TAG_PATTERN + R")\])");   // e.g., S], Fa]
+
+// Refined regexes to handle cases where clause tags are followed/preceded by non-word characters
+// or appear at the beginning/end of the parseField string.
+const regex clauseStartRegex(R"(\[(" + CLAUSE_TAG_PATTERN + R")(?:[^A-Za-z0-9_]|$))"); // e.g., [S[, [Fa:
+const regex clauseEndRegex(R"((?:[^A-Za-z0-9_]|^)(" + CLAUSE_TAG_PATTERN + R")\])");   // e.g., ]S], :Fa]
 
 // Trims whitespace
 string trim(const string& s) {
@@ -133,6 +135,25 @@ int main() {
     } else {
         cout << "[DEBUG_TEST] clauseStartRegex did NOT match for '" << testParseField << "'\n";
     }
+
+    testParseField = "ABC S] DEF"; // Test case for closing tag with surrounding text
+    if (regex_search(testParseField, testMatch, clauseEndRegex)) {
+        cout << "[DEBUG_TEST] clauseEndRegex matched in context: " << testMatch[0].str() << " Group 1: " << testMatch[1].str() << endl;
+    } else {
+        cout << "[DEBUG_TEST] clauseEndRegex did NOT match in context for '" << testParseField << "'\n";
+    }
+
+    testParseField = "blah[S.blah]"; // Another test for start and end in one
+     if (regex_search(testParseField, testMatch, clauseStartRegex)) {
+        cout << "[DEBUG_TEST] clauseStartRegex matched: " << testMatch[0].str() << " Group 1: " << testMatch[1].str() << endl;
+    } else {
+        cout << "[DEBUG_TEST] clauseStartRegex did NOT match for '" << testParseField << "'\n";
+    }
+    if (regex_search(testParseField, testMatch, clauseEndRegex)) {
+        cout << "[DEBUG_TEST] clauseEndRegex matched: " << testMatch[0].str() << " Group 1: " << testMatch[1].str() << endl;
+    } else {
+        cout << "[DEBUG_TEST] clauseEndRegex did NOT match for '" << testParseField << "'\n";
+    }
     // End of direct regex tests
 
 
@@ -166,7 +187,9 @@ int main() {
             if (fields.size() >= 6) {
                 parseField = fields[5];
             } else {
-                cout << "[DEBUG] Line " << currentLineIndexInGlobalBuffer << " in " << entry.path().filename() << " has < 6 fields. Skipping parseField analysis for SVO detection.\n";
+                // For lines with fewer than 6 fields (e.g., header/footer), parseField will remain empty.
+                // This is expected and those lines won't contribute to clause detection.
+                cout << "[DEBUG] Line " << currentLineIndexInGlobalBuffer << " in " << entry.path().filename() << " has < 6 fields. Skipping parseField analysis.\n";
             }
             
             if (!parseField.empty()) {
@@ -219,7 +242,7 @@ int main() {
                                     total++;
                                 }
                             } else {
-                                cout << "[DEBUG] Extracted clauseLines is empty for clause type " << topClause.first << ". (This might happen for single-line empty clauses).\n";
+                                cout << "[DEBUG] Extracted clauseLines is empty for clause type " << topClause.first << ". (This might happen for single-line empty clauses or malformed input).\n";
                             }
                             foundAndPopped = true;
                             break; // Stop searching and popping, this clause is handled

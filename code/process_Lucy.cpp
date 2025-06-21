@@ -14,8 +14,10 @@ namespace fs = std::filesystem;
 using namespace std;
 
 // Clause tag regex
-const regex clauseStart(R"(\[(S|Ss|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L))");
-const regex clauseEnd(R"((S|Ss|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L)\])");
+// Improved: match clause start and end precisely with full bracket
+const regex clauseStart(R"(\[([A-Za-z]{1,3})\b)");  // e.g., [Fn
+const regex clauseEnd(R"(\b([A-Za-z]{1,3})\])");    // e.g., Fn]
+
 
 // Trims whitespace
 string trim(const string& s) {
@@ -97,42 +99,53 @@ int main() {
         stack<string> clauseStack;
         vector<string> currentClause;
 
-        while (getline(infile, line)) {
-            buffer.push_back(line);
-            smatch match;
+       while (getline(infile, line)) {
+    buffer.push_back(line);
+    smatch match;
 
-            // Push clause starts
-            if (regex_search(line, match, clauseStart)) {
-                clauseStack.push(match.str(1));
-                currentClause.push_back(line);
-            }
-            // Within a clause
-            else if (!clauseStack.empty()) {
-                currentClause.push_back(line);
-            }
+    // Check for clause start
+    if (regex_search(line, match, clauseStart)) {
+        string tag = match.str(1);
+        clauseStack.push(tag);
+        currentClause.push_back(line);
+        cout << "[DEBUG] Clause START detected: [" << tag << " in file " << entry.path().filename() << "]\n";
+        continue;
+    }
 
-            // Pop clause ends
-            if (regex_search(line, match, clauseEnd)) {
-                if (!clauseStack.empty()) {
-                    string closed = match.str(1);
-                    if (clauseStack.top() == closed) {
-                        clauseStack.pop();
-                    }
-                }
+    // If inside a clause, accumulate
+    if (!clauseStack.empty()) {
+        currentClause.push_back(line);
+    }
 
-                if (clauseStack.empty() && !currentClause.empty()) {
-                    cout << "\n[DEBUG] Clause completed. Lines:\n";
-                    for (const string& l : currentClause) cout << l << "\n";
-
-                    string order = detectOrderFromSUSANNE(currentClause);
-                    if (!order.empty()) {
-                        orderCounts[order]++;
-                        total++;
-                    }
-                    currentClause.clear();
-                }
+    // Check for clause end
+    if (regex_search(line, match, clauseEnd)) {
+        string tag = match.str(1);
+        if (!clauseStack.empty()) {
+            if (clauseStack.top() == tag) {
+                clauseStack.pop();
+                cout << "[DEBUG] Clause END matched: " << tag << "\n";
+            } else {
+                cout << "[WARNING] Mismatched clause tag. Expected: " << clauseStack.top() << ", Found: " << tag << "\n";
             }
         }
+
+        // Clause is complete
+        if (clauseStack.empty() && !currentClause.empty()) {
+            cout << "\n[DEBUG] Clause completed in file: " << entry.path().filename() << "\n";
+            for (const string& l : currentClause) cout << l << "\n";
+
+            string order = detectOrderFromSUSANNE(currentClause);
+            if (!order.empty()) {
+                orderCounts[order]++;
+                total++;
+            } else {
+                cout << "[INFO] No valid SVO order found in this clause.\n";
+            }
+            currentClause.clear();
+        }
+    }
+}
+
     }
 
     // Print results

@@ -34,13 +34,12 @@ const std::unordered_set<std::string> CLAUSE_TAGS = {
     "W","A","Z","L"
 };
 
-/* regex that finds “[TAG” plus optional “:s”/“:o” --------------------*/
-const std::regex  OPEN_RE (R"(\[([A-Za-z]+(?::[a-z])?))");
-const std::regex  CLOSE_RE(R"(([A-Za-z]+)\])");
-/* regex that finds *any* role marker inside a token ------------------*//* FIX */
-const std::regex  ROLE_RE (R"(\[([A-Za-z]+):([so]))");                /* FIX */
+/* regex helpers ---------------------------------------------------- */
+const std::regex OPEN_RE (R"(\[([A-Za-z]+(?::[a-z])?))");
+const std::regex CLOSE_RE(R"(([A-Za-z]+)\])");
+/* NEW: capture any “[TAG:s” or “[TAG:o” inside the token ------------ */
+const std::regex ROLE_RE (R"(\[([A-Za-z]+):([so]))");
 
-/* ------------------------------------------------------------------ */
 int main(int argc,char* argv[])
 {
     if (argc < 2) {
@@ -73,10 +72,10 @@ int main(int argc,char* argv[])
             for (std::string w; iss >> w; ) col.push_back(std::move(w));
             if (col.size() < 6) { ++tokIdx; continue; }
 
-            const std::string& pos      = col[2];  // POS column
-            const std::string& formtags = col[5];  // bracket column
+            const std::string& pos      = col[2];   // POS column
+            const std::string& formtags = col[5];   // bracket column
 
-            /* ---------------- handle OPEN brackets --------------------------- */
+            /* ---------------- handle OPEN brackets (unchanged) -------------- */
             for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),OPEN_RE);
                  it != std::sregex_iterator(); ++it)
             {
@@ -87,7 +86,6 @@ int main(int argc,char* argv[])
 
                 if (!CLAUSE_TAGS.count(baseTag)) continue;
 
-                /* propagate :s / :o to parent */
                 if (!stack.empty() && colon!=std::string::npos) {
                     Clause& par = stack.back();
                     char role = fullTag[colon+1];
@@ -105,30 +103,44 @@ int main(int argc,char* argv[])
                     }
                 }
                 stack.push_back({baseTag});
+                if (DEBUG) std::cout << std::string(stack.size(),' ')
+                                     << "[OPEN] " << baseTag << "  @tok " << tokIdx << '\n';
             }
 
-            /* ---------------- classify this lexical token -------------------- */
+            /* ---------------- classify this lexical token ------------------- */
             if (!stack.empty()) {
                 Clause& c = stack.back();
 
-                if (c.verbPos==-1 && !pos.empty() && (pos[0]=='V'||pos[0]=='v'))
+                if (c.verbPos==-1 && !pos.empty() && (pos[0]=='V'||pos[0]=='v')) {
                     c.verbPos = tokIdx;
+                    if (DEBUG) std::cout << std::string(stack.size(),' ')
+                                         << "verb   @tok " << tokIdx << '\n';
+                }
 
-                /* NEW: look for :s/:o on *lexical* tags only ------------------ */ /* FIX */
-                for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),ROLE_RE);
-                     it != std::sregex_iterator(); ++it)
+                /* >>> UPDATED SECTION <<<  – look for :s / :o only on           */
+                /* non‑clause tags inside this token                             */
+                for (auto m = std::sregex_iterator(formtags.begin(),formtags.end(),ROLE_RE);
+                     m != std::sregex_iterator(); ++m)
                 {
-                    std::string tagName = (*it)[1].str();
-                    char roleChar      = (*it)[2].str()[0];
+                    std::string tagName = (*m)[1].str();
+                    char role          = (*m)[2].str()[0];
 
-                    if (CLAUSE_TAGS.count(tagName)) continue; // skip clause-level tags
+                    if (CLAUSE_TAGS.count(tagName)) continue;       // skip clause labels
 
-                    if (roleChar=='s' && c.subjPos==-1) c.subjPos = tokIdx;
-                    if (roleChar=='o' && c.objPos ==-1) c.objPos  = tokIdx;
+                    if (role=='s' && c.subjPos==-1) {
+                        c.subjPos = tokIdx;
+                        if (DEBUG) std::cout << std::string(stack.size(),' ')
+                                             << "subject@tok " << tokIdx << '\n';
+                    }
+                    if (role=='o' && c.objPos ==-1) {
+                        c.objPos = tokIdx;
+                        if (DEBUG) std::cout << std::string(stack.size(),' ')
+                                             << "object @tok " << tokIdx << '\n';
+                    }
                 }
             }
 
-            /* ---------------- handle CLOSE brackets -------------------------- */
+            /* ---------------- handle CLOSE brackets (unchanged) ------------- */
             for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),CLOSE_RE);
                  it != std::sregex_iterator(); ++it)
             {
@@ -145,6 +157,8 @@ int main(int argc,char* argv[])
                                       [](auto&a,auto&b){return a.first<b.first;});
                             std::string pat; for (auto&p:tri) pat.push_back(p.second);
                             ++tally[pat]; ++grandTotal;
+                            if (DEBUG) std::cout << std::string(stack.size()+2,' ')
+                                                 << "order → " << pat << '\n';
                         }
                         break;
                     }
@@ -160,7 +174,7 @@ int main(int argc,char* argv[])
 
     std::cout << std::fixed << std::setprecision(2);
     for (auto& kv : tally) {
-        double pct = 100.0*kv.second/grandTotal;
+        double pct = 100.0 * kv.second / grandTotal;
         std::cout << kv.first << '\t' << kv.second << '\t' << pct << "%\n";
     }
     return 0;

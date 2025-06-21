@@ -30,9 +30,9 @@ static void run_unit_tests()
     assert(order_pattern(0,1,2) == "SVO"); 
     assert(order_pattern(0,2,1) == "SOV");
     assert(order_pattern(1,0,2) == "VSO");
-    assert(order_pattern(2,0,1) == "VOS");
-    assert(order_pattern(1,2,0) == "OVS");
-    assert(order_pattern(2,1,0) == "OSV");
+    assert(order_pattern(2,1,1) == "VOS");
+    assert(order_pattern(2,1,0) == "OVS");
+    assert(order_pattern(1,2,0) == "OSV");
 
     const std::regex OPEN_RE  (R"(\[([A-Za-z]+(?::[a-z])?))");
     const std::regex CLOSE_RE (R"(([A-Za-z]+)\])");

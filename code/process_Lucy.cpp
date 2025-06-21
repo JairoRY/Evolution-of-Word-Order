@@ -91,7 +91,7 @@ int main(int argc, char* argv[])
             while (iss >> cell) cols.push_back(cell);
             if (cols.size() < 6) continue;          // malformed line
 
-            const std::string& posTag   = cols[1];  // 2nd column
+            const std::string& posTag   = cols[2];  // 2nd column
             const std::string& formTags = cols[5];  // 6th column
 
             /* ---- handle opening tags ------------------------------------------------ */

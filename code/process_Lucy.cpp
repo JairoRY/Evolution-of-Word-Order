@@ -16,6 +16,7 @@ using namespace std;
 
 // Define clause-level tags more precisely based on the provided legend.
 // These are the tags that indicate a complete clause structure, not just any phrase.
+// REVERTING TO ORIGINAL SPECIFIC CLAUSE TAGS, as broadening led to pushing non-clause tags.
 const string CLAUSE_TAG_PATTERN = "S|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L";
 const regex clauseStartRegex(R"(\[(" + CLAUSE_TAG_PATTERN + R")\b)"); // e.g., [S, [Fa
 const regex clauseEndRegex(R"(\b(" + CLAUSE_TAG_PATTERN + R")\])");   // e.g., S], Fa]
@@ -110,6 +111,31 @@ int main() {
         return 1;
     }
 
+    // Direct regex tests with specific clause tags
+    string testParseField = "[S[Nns:s.Nns:s]";
+    smatch testMatch;
+    if (regex_search(testParseField, testMatch, clauseStartRegex)) {
+        cout << "[DEBUG_TEST] clauseStartRegex matched: " << testMatch[0].str() << " Group 1: " << testMatch[1].str() << endl;
+    } else {
+        cout << "[DEBUG_TEST] clauseStartRegex did NOT match for '" << testParseField << "'\n";
+    }
+
+    testParseField = "S]"; // Test case for closing tag
+    if (regex_search(testParseField, testMatch, clauseEndRegex)) {
+        cout << "[DEBUG_TEST] clauseEndRegex matched: " << testMatch[0].str() << " Group 1: " << testMatch[1].str() << endl;
+    } else {
+        cout << "[DEBUG_TEST] clauseEndRegex did NOT match for '" << testParseField << "'\n";
+    }
+
+    testParseField = "[Fn:o[Ns:s.";
+     if (regex_search(testParseField, testMatch, clauseStartRegex)) {
+        cout << "[DEBUG_TEST] clauseStartRegex matched: " << testMatch[0].str() << " Group 1: " << testMatch[1].str() << endl;
+    } else {
+        cout << "[DEBUG_TEST] clauseStartRegex did NOT match for '" << testParseField << "'\n";
+    }
+    // End of direct regex tests
+
+
     for (const auto& entry : fs::directory_iterator(dirPath)) {
         if (!entry.is_regular_file()) continue;
 
@@ -140,14 +166,9 @@ int main() {
             if (fields.size() >= 6) {
                 parseField = fields[5];
             } else {
-                // If fields.size() < 6, it's not a data line or malformed, but could still contain relevant tags if
-                // SUSANNE files have lines with tags outside of the 6th field (unlikely based on snippets).
-                // However, for consistency with parsing S/V/O, we focus on the parseField.
-                // Output debug info for these lines
                 cout << "[DEBUG] Line " << currentLineIndexInGlobalBuffer << " in " << entry.path().filename() << " has < 6 fields. Skipping parseField analysis for SVO detection.\n";
             }
             
-            // Add a debug print for parseField content
             if (!parseField.empty()) {
                 cout << "[DEBUG] Line " << currentLineIndexInGlobalBuffer << " ParseField: '" << parseField << "'\n";
             } else {
@@ -156,8 +177,6 @@ int main() {
 
 
             // --- Process closing tags first to ensure inner clauses are processed before outer ones ---
-            // Use sregex_iterator to find all matches for clauseEndRegex on the current line.
-            // Collect them and reverse to process innermost closing tags first.
             vector<string> closingTagsOnLine;
             for (sregex_iterator it(parseField.begin(), parseField.end(), clauseEndRegex), end; it != end; ++it) {
                 closingTagsOnLine.push_back((*it)[1].str());
@@ -171,42 +190,60 @@ int main() {
             }
 
             for (const string& endTag : closingTagsOnLine) {
-                if (!clauseStack.empty() && clauseStack.top().first == endTag) {
-                    pair<string, size_t> completedClause = clauseStack.top();
-                    clauseStack.pop();
+                // Modified logic: If current endTag doesn't match stack top, look deeper in stack for a match
+                bool foundAndPopped = false;
+                if (!clauseStack.empty()) {
+                    stack<pair<string, size_t>> tempStack;
+                    while (!clauseStack.empty()) {
+                        pair<string, size_t> topClause = clauseStack.top();
+                        clauseStack.pop();
 
-                    cout << "[DEBUG] Clause END matched and popped: " << completedClause.first << " at global line " << currentLineIndexInGlobalBuffer << ".\n";
-                    
-                    // Extract lines belonging to this completed clause.
-                    // Slice from the global buffer using the stored start index and current line index.
-                    vector<string> clauseLines;
-                    for (size_t i = completedClause.second; i <= currentLineIndexInGlobalBuffer; ++i) {
-                        clauseLines.push_back(globalLinesBuffer[i]);
-                    }
+                        if (topClause.first == endTag) {
+                            // Found matching tag, process this clause
+                            cout << "[DEBUG] Clause END matched and popped (after searching stack): " << topClause.first << " at global line " << currentLineIndexInGlobalBuffer << " (started " << topClause.second << ").\n";
+                            
+                            vector<string> clauseLines;
+                            // Ensure start line is not greater than end line
+                            if (topClause.second <= currentLineIndexInGlobalBuffer) {
+                                for (size_t i = topClause.second; i <= currentLineIndexInGlobalBuffer; ++i) {
+                                    clauseLines.push_back(globalLinesBuffer[i]);
+                                }
+                            } else {
+                                cerr << "[ERROR] Clause start line (" << topClause.second << ") is greater than end line (" << currentLineIndexInGlobalBuffer << ") for tag " << topClause.first << ".\n";
+                            }
 
-                    if (!clauseLines.empty()) {
-                        string order = detectOrderFromSUSANNE(clauseLines, completedClause.first);
-                        if (!order.empty()) {
-                            orderCounts[order]++;
-                            total++;
+                            if (!clauseLines.empty()) {
+                                string order = detectOrderFromSUSANNE(clauseLines, topClause.first);
+                                if (!order.empty()) {
+                                    orderCounts[order]++;
+                                    total++;
+                                }
+                            } else {
+                                cout << "[DEBUG] Extracted clauseLines is empty for clause type " << topClause.first << ". (This might happen for single-line empty clauses).\n";
+                            }
+                            foundAndPopped = true;
+                            break; // Stop searching and popping, this clause is handled
+                        } else {
+                            // If it's not the matching tag, temporarily store it
+                            tempStack.push(topClause);
+                            cout << "[INFO] Popped non-matching tag " << topClause.first << " to search for " << endTag << ".\n";
                         }
-                    } else {
-                        cout << "[DEBUG] Extracted clauseLines is empty for clause type " << completedClause.first << ".\n";
                     }
-                } else {
-                    cout << "[WARNING] Mismatched or unexpected clause end tag: " << endTag << " at global line " << currentLineIndexInGlobalBuffer << ".\n";
-                    if (!clauseStack.empty()) {
-                        cout << "[WARNING] Expected tag on stack top: " << clauseStack.top().first << ".\n";
-                    } else {
-                        cout << "[WARNING] Clause stack is empty.\n";
+                    // Restore non-matching elements back to the main stack
+                    while (!tempStack.empty()) {
+                        clauseStack.push(tempStack.top());
+                        tempStack.pop();
                     }
+                }
+
+                if (!foundAndPopped) {
+                    cout << "[WARNING] Unexpected clause end tag: " << endTag << " at global line " << currentLineIndexInGlobalBuffer << " (no match found in stack).\n";
                 }
             }
 
             // --- Process opening tags ---
-            // Use sregex_iterator to find all matches for clauseStartRegex on the current line.
             vector<string> openingTagsOnLine;
-            for (sregex_iterator it_start(parseField.begin(), parseField.end(), clauseStartRegex), end_start; it != end_start; ++it_start) {
+            for (sregex_iterator it_start(parseField.begin(), parseField.end(), clauseStartRegex), end_start; it_start != end_start; ++it_start) {
                 openingTagsOnLine.push_back((*it_start)[1].str());
             }
 
@@ -231,8 +268,10 @@ int main() {
             cerr << "[WARNING] Unclosed clause: " << remainingClause.first << " started at global line " << remainingClause.second << " in file: " << entry.path().filename() << endl;
             // Process any unclosed clauses with lines from their start to the end of the file
             vector<string> clauseLines;
-            for (size_t i = remainingClause.second; i < globalLinesBuffer.size(); ++i) {
-                clauseLines.push_back(globalLinesBuffer[i]);
+            if (remainingClause.second < globalLinesBuffer.size()) { // Ensure start index is valid
+                for (size_t i = remainingClause.second; i < globalLinesBuffer.size(); ++i) {
+                    clauseLines.push_back(globalLinesBuffer[i]);
+                }
             }
             if (!clauseLines.empty()) {
                 string order = detectOrderFromSUSANNE(clauseLines, remainingClause.first);

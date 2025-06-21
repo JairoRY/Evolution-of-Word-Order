@@ -23,7 +23,7 @@ static string detectOrder(const string& tree) {
     vector<pair<char, size_t>> elements;
 
     regex subj(R"(\(NP-SBJ\b)");                 
-    regex verb(R"(\((VB[DPZGN]?|BE[DPN]|BAG|HV[PDZ]?)\b)"); 
+    regex verb(R"(\((VB[DPZGN]?|BE[A-Z]|BAG|HV[PDZ]?)\b)"); 
     regex obj (R"(\(NP-OB1\b|\(NP-OBJ\b)");    
     regex prd (R"(\((NP|ADJP|PP)-PRD\b)");   
     

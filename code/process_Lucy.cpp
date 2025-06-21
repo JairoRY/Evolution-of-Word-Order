@@ -207,7 +207,7 @@ int main()
         long count = tally[pat];
         double pct = (grandTotal > 0) ? 100.0 * count / grandTotal : 0.0;
         std::cout << pat << ": " << count << " (" << std::fixed
-                  << std::setprecision(2) << pct << "% )\n";
+                  << std::setprecision(2) << pct << "%)\n";
 
         csv << pat << ',' << count << ','                 
             << std::fixed << std::setprecision(2)         

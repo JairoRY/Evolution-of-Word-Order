@@ -13,177 +13,155 @@ namespace fs = std::filesystem;
 /* ------------------------------------------------------------------ */
 /*                           data structures                          */
 /* ------------------------------------------------------------------ */
+// ... [unchanged includes and setup above] ...
+
 struct Clause {
-    std::string tag;           // S, Fa, O ...
-    long subjPos  = -1;        // first subject token inside clause
-    long verbPos  = -1;        // first verb
-    long objPos   = -1;        // first object
-    bool  counted = false;     // ★ already tallied?                // ★
+    std::string tag;
+    long subjPos  = -1;
+    long verbPos  = -1;
+    long objPos   = -1;
+    bool counted  = false;
+
+    long fallbackObj = -1;   // ★ used to store potential object from PP
 };
 
-constexpr bool DEBUG = true;
-
-/* ------------------------------------------------------------------ */
 const std::unordered_set<std::string> CLAUSE_TAGS = {
     "O","Oh","Ot","Q","I","Iq","Iu",
     "S","Ss","Fa","Fn","Fr","Ff","Fc",
     "Tg","Tn","Ti","Tf","Tb","Tq",
-    "W","A","Z","L"
+    "W","A","Z","L", "Po"  // ★ add Po to catch opening prepositional phrases
 };
 
-/* regex helpers */
 const std::regex OPEN_RE (R"(\[([A-Za-z]+(?::[a-z])?))");
 const std::regex CLOSE_RE(R"(([A-Za-z]+)\])");
 const std::regex ROLE_RE (R"(\[([A-Za-z]+):([so]))");
 
-int main(int argc,char* argv[])
+std::vector<std::string> poStack;  // ★ stack to track Po nesting
+
+// ... inside your token-processing loop ...
+
+/* ------------------- deal with opening brackets ------------------- */
+for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),OPEN_RE);
+     it != std::sregex_iterator(); ++it)
 {
-    if (argc < 2) {
-        std::cout << "Usage: " << argv[0] << "  <path-to-SUSANNE/fc2>\n";
-        return 1;
+    std::string fullTag = (*it)[1].str();
+    size_t colon = fullTag.find(':');
+    std::string baseTag = (colon==std::string::npos) ? fullTag
+                                                     : fullTag.substr(0,colon);
+
+    if (!CLAUSE_TAGS.count(baseTag)) continue;
+
+    // NEW: if we open a Po prepositional phrase, push to poStack
+    if (baseTag == "Po") poStack.push_back("Po"); // ★
+
+    if (!stack.empty() && colon!=std::string::npos) {
+        Clause& parent = stack.back();
+        char role = fullTag[colon+1];
+        if (role == 's' && parent.subjPos == -1) parent.subjPos = tokIdx;
+        if (role == 'o' && parent.objPos  == -1) parent.objPos  = tokIdx;
+
+        if (DEBUG && (role == 's' || role == 'o'))
+            std::cout << std::string(stack.size(),' ')
+                      << "subclause-as-" << (role=='s'?"subject":"object")
+                      << " @tok " << tokIdx << '\n';
+
+        if (!parent.counted && parent.subjPos!=-1 && parent.verbPos!=-1 && parent.objPos!=-1) {
+            std::vector<std::pair<long,char>> tri = {
+                {parent.subjPos,'S'},{parent.verbPos,'V'},{parent.objPos,'O'}};
+            std::sort(tri.begin(),tri.end(),
+                      [](auto&a,auto&b){return a.first<b.first;});
+            std::string pat; for (auto&p:tri) pat.push_back(p.second);
+            ++tally[pat]; ++grandTotal;
+            parent.counted = true;
+            if (DEBUG)
+                std::cout << std::string(stack.size(),' ')
+                          << "order → " << pat << '\n';
+        }
     }
+    stack.push_back({baseTag});
+    if (DEBUG) std::cout << std::string(stack.size(),' ')
+                         << "[OPEN] " << baseTag << "  @tok " << tokIdx << '\n';
+}
 
-    fs::path dir = argv[1];
-    std::unordered_map<std::string,long> tally;
-    long grandTotal = 0;
+/* ------------------------ token classification -------------------- */
+if (!stack.empty()) {
+    Clause& c = stack.back();
 
-    for (auto const& ent : fs::recursive_directory_iterator(dir))
+    if (c.verbPos==-1 && !pos.empty() && (pos[0]=='V'||pos[0]=='v')) c.verbPos = tokIdx;
+
+    for (auto m = std::sregex_iterator(formtags.begin(),formtags.end(),ROLE_RE);
+         m != std::sregex_iterator(); ++m)
     {
-        if (!ent.is_regular_file()) continue;
-        std::ifstream in(ent.path());
-        if (!in) { std::cout << "Cannot open " << ent.path() << '\n'; continue; }
+        std::string tagName = (*m)[1].str();
+        char role           = (*m)[2].str()[0];
 
-        if (DEBUG) std::cout << "\n>>> Processing file: " << ent.path() << '\n';
+        if (CLAUSE_TAGS.count(tagName)) continue;
 
-        std::vector<Clause> stack;
-        long tokIdx = 0;
+        if (role == 's') {
+            if (c.subjPos == -1) c.subjPos = tokIdx;
 
-        std::string line;
-        while (std::getline(in,line))
-        {
-            if (line.empty()) { ++tokIdx; continue; }
-
-            std::istringstream iss(line);
-            std::vector<std::string> col;
-            for (std::string w; iss >> w; ) col.push_back(std::move(w));
-            if (col.size() < 6) { ++tokIdx; continue; }
-
-            const std::string& pos      = col[2];   // POS column
-            const std::string& formtags = col[5];   // bracket column
-
-            /* ------------- handle OPEN brackets (unchanged logic) ------------ */
-            for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),OPEN_RE);
-                 it != std::sregex_iterator(); ++it)
-            {
-                std::string fullTag = (*it)[1].str();
-                size_t colon = fullTag.find(':');
-                std::string baseTag = (colon==std::string::npos) ? fullTag
-                                                                : fullTag.substr(0,colon);
-
-                if (!CLAUSE_TAGS.count(baseTag)) continue;
-
-                if (!stack.empty() && colon!=std::string::npos) {
-                    Clause& par = stack.back();
-                    char role = fullTag[colon+1];
-                    if (role=='s' && par.subjPos==-1) par.subjPos = tokIdx;
-                    if (role=='o' && par.objPos ==-1) par.objPos  = tokIdx;
-
-                    if (DEBUG && (role=='s'||role=='o'))
-                        std::cout << std::string(stack.size(),' ')
-                                  << "subclause-as-" << (role=='s'?"subject":"object")
-                                  << " @tok " << tokIdx << '\n';
-
-                    /* ★ immediate count if parent now complete */
-                    if (!par.counted && par.subjPos!=-1 && par.verbPos!=-1 && par.objPos!=-1) {
-                        std::vector<std::pair<long,char>> tri = {
-                            {par.subjPos,'S'},{par.verbPos,'V'},{par.objPos,'O'}};
-                        std::sort(tri.begin(),tri.end(),
-                                  [](auto&a,auto&b){return a.first<b.first;});
-                        std::string pat; for (auto&p:tri) pat.push_back(p.second);
-                        ++tally[pat]; ++grandTotal;
-                        par.counted = true;                           // ★
-                        if (DEBUG)
-                            std::cout << std::string(stack.size(),' ')
-                                      << "order → " << pat << '\n';
-                    }
-                }
-                stack.push_back({baseTag});
-                if (DEBUG) std::cout << std::string(stack.size(),' ')
-                                     << "[OPEN] " << baseTag << "  @tok " << tokIdx << '\n';
+            // ★ NEW: if we're inside a [Po ...], remember this as potential object
+            if (!poStack.empty() && c.objPos == -1 && c.fallbackObj == -1) {
+                c.fallbackObj = tokIdx;
+                if (DEBUG)
+                    std::cout << std::string(stack.size(),' ')
+                              << "inferred object (from :s in Po) @tok " << tokIdx << '\n';
             }
+        }
 
-            /* ---------------- classify this lexical token ------------------- */
-            if (!stack.empty()) {
-                Clause& c = stack.back();
-
-                if (c.verbPos==-1 && !pos.empty() && (pos[0]=='V'||pos[0]=='v'))
-                    c.verbPos = tokIdx;
-
-                for (auto m = std::sregex_iterator(formtags.begin(),formtags.end(),ROLE_RE);
-                     m != std::sregex_iterator(); ++m)
-                {
-                    std::string tagName = (*m)[1].str();
-                    char role          = (*m)[2].str()[0];
-
-                    if (CLAUSE_TAGS.count(tagName)) continue;   // skip clause labels
-
-                    if (role=='s' && c.subjPos==-1) c.subjPos = tokIdx;
-                    if (role=='o' && c.objPos ==-1) c.objPos  = tokIdx;
-                }
-
-                /* ★ count as soon as we have S, V, O for this clause */
-                if (!c.counted && c.subjPos!=-1 && c.verbPos!=-1 && c.objPos!=-1) {
-                    std::vector<std::pair<long,char>> tri = {
-                        {c.subjPos,'S'},{c.verbPos,'V'},{c.objPos,'O'}};
-                    std::sort(tri.begin(),tri.end(),
-                              [](auto&a,auto&b){return a.first<b.first;});
-                    std::string pat; for (auto&p:tri) pat.push_back(p.second);
-                    ++tally[pat]; ++grandTotal;
-                    c.counted = true;                               // ★
-                    if (DEBUG) std::cout << std::string(stack.size(),' ')
-                                         << "order → " << pat << '\n';
-                }
-            }
-
-            /* ------------- handle CLOSE brackets (skip double count) -------- */
-            for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),CLOSE_RE);
-                 it != std::sregex_iterator(); ++it)
-            {
-                std::string close = (*it)[1].str();
-                if (!CLAUSE_TAGS.count(close)) continue;
-
-                while (!stack.empty()) {
-                    Clause fin = stack.back(); stack.pop_back();
-                    if (fin.tag == close) {
-                        /* no need to count here if already tallied */          // ★
-                        if (!fin.counted &&
-                            fin.subjPos!=-1 && fin.verbPos!=-1 && fin.objPos!=-1)
-                        {
-                            std::vector<std::pair<long,char>> tri = {
-                                {fin.subjPos,'S'},{fin.verbPos,'V'},{fin.objPos,'O'}};
-                            std::sort(tri.begin(),tri.end(),
-                                      [](auto&a,auto&b){return a.first<b.first;});
-                            std::string pat; for (auto&p:tri) pat.push_back(p.second);
-                            ++tally[pat]; ++grandTotal;
-                            if (DEBUG) std::cout << std::string(stack.size()+2,' ')
-                                                 << "order → " << pat << '\n';
-                        }
-                        break;
-                    }
-                }
-            }
-            ++tokIdx;
+        if (role == 'o' && c.objPos == -1) {
+            c.objPos = tokIdx;
         }
     }
 
-    /* ------------------------------------------------------------------ */
-    std::cout << "\n===== Word‑order distribution =====\n";
-    if (grandTotal==0) { std::cout << "No complete S–V–O triples were found.\n"; return 0; }
-
-    std::cout << std::fixed << std::setprecision(2);
-    for (auto& kv : tally) {
-        double pct = 100.0 * kv.second / grandTotal;
-        std::cout << kv.first << '\t' << kv.second << '\t' << pct << "%\n";
+    // ★ Assign fallback object if still no :o but we have a good candidate
+    if (!c.counted && c.objPos == -1 && c.fallbackObj != -1) {
+        c.objPos = c.fallbackObj;
+        if (DEBUG)
+            std::cout << std::string(stack.size(),' ')
+                      << "fallback object → @tok " << c.objPos << '\n';
     }
-    return 0;
+
+    // ★ Tally immediately if ready
+    if (!c.counted && c.subjPos!=-1 && c.verbPos!=-1 && c.objPos!=-1) {
+        std::vector<std::pair<long,char>> tri = {
+            {c.subjPos,'S'},{c.verbPos,'V'},{c.objPos,'O'}};
+        std::sort(tri.begin(),tri.end(),
+                  [](auto&a,auto&b){return a.first<b.first;});
+        std::string pat; for (auto&p:tri) pat.push_back(p.second);
+        ++tally[pat]; ++grandTotal;
+        c.counted = true;
+        if (DEBUG) std::cout << std::string(stack.size(),' ')
+                             << "order → " << pat << '\n';
+    }
+}
+
+/* ------------------- deal with closing brackets ------------------- */
+for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),CLOSE_RE);
+     it != std::sregex_iterator(); ++it)
+{
+    std::string close = (*it)[1].str();
+    if (!CLAUSE_TAGS.count(close)) continue;
+
+    if (close == "Po" && !poStack.empty()) poStack.pop_back(); // ★
+
+    while (!stack.empty()) {
+        Clause done = stack.back(); stack.pop_back();
+
+        if (done.tag == close) {
+            if (!done.counted &&
+                done.subjPos!=-1 && done.verbPos!=-1 && done.objPos!=-1)
+            {
+                std::vector<std::pair<long,char>> tri = {
+                    {done.subjPos,'S'},{done.verbPos,'V'},{done.objPos,'O'}};
+                std::sort(tri.begin(),tri.end(),
+                          [](auto&a,auto&b){return a.first<b.first;});
+                std::string pat; for (auto&p:tri) pat.push_back(p.second);
+                ++tally[pat]; ++grandTotal;
+                if (DEBUG) std::cout << std::string(stack.size()+2,' ')
+                                     << "order → " << pat << '\n';
+            }
+            break;
+        }
+    }
 }

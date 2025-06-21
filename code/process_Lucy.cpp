@@ -160,15 +160,24 @@ int main()
         }
     }
 
-    std::cout << "\nWord Order Statistics:\n";              
-    std::vector<std::string> allOrders =                    
-        {"SVO","SOV","VSO","VOS","OVS","OSV"};
+    std::vector<std::string> orders = {"SVO","SOV","VSO","VOS","OVS","OSV"};
 
-    for (const std::string& pat : allOrders) {
+    std::cout << "\nWord Order Statistics:\n";
+    std::ofstream csv("word_order_stats_Susanne.csv");          
+    csv << "Order,Count,Percent\n";                     
+
+    for (const std::string& pat : orders) {
         long count = tally[pat];
         double pct = (grandTotal > 0) ? 100.0 * count / grandTotal : 0.0;
         std::cout << pat << ": " << count << " (" << std::fixed
                   << std::setprecision(2) << pct << "%)\n";
+
+        csv << pat << ',' << count << ','                 
+            << std::fixed << std::setprecision(2)         
+            << pct << '\n';                               
     }
+    csv.close();                                         
+    std::cout << "\nCSV saved to word_order_stats_Susanne.csv\n";
+    
     return 0;
 }

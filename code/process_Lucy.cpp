@@ -176,8 +176,7 @@ int main()
             << std::fixed << std::setprecision(2)         
             << pct << '\n';                               
     }
-    csv.close();                                         
-    std::cout << "\nCSV saved to word_order_stats_Susanne.csv\n";
+    csv.close();                                        
     
     return 0;
 }

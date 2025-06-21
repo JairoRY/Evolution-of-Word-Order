@@ -102,13 +102,27 @@ int main() {
         }
     }
 
+   
+
     cout << "\nWord Order Statistics:\n";
     vector<string> allOrders = {"SVO", "SOV", "VSO", "VOS", "OVS", "OSV"};
+
+    ofstream csv("word_order_stats_PCEEC.csv"); 
+    csv << "Order,Count,Percent\n";        
+
     for (const string& order : allOrders) {
         int count = orderCounts[order];
         double percent = (total > 0) ? 100.0 * count / total : 0.0;
-        cout << order << ": " << count << " (" << percent << "%)\n";
+
+        cout << order << ": " << count << " (" << fixed << setprecision(2)
+             << percent << "%)\n";
+
+        csv << order << "," << count << "," << fixed << setprecision(2)
+            << percent << "\n"; 
     }
+
+    csv.close(); 
+    cout << "\nCSV saved to word_order_stats_PCEEC.csv\n"; 
 
     return 0;
 }

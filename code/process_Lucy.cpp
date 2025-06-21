@@ -7,8 +7,53 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <filesystem>
+#include <cassert>  
 
 namespace fs = std::filesystem;
+
+
+static std::string order_pattern(long subj, long verb, long obj)
+{
+    std::vector<std::pair<long,char>> tri = {{subj,'S'},{verb,'V'},{obj,'O'}};
+    std::sort(tri.begin(),tri.end(),[](auto&a,auto&b){return a.first<b.first;});
+    std::string pat; for (auto&p:tri) pat.push_back(p.second);
+    return pat;
+}
+
+
+static void run_unit_tests()
+{
+    struct ClauseTest { long subjPos=-1, verbPos=-1, objPos=-1; bool counted=false; } ct;
+    assert(ct.subjPos == -1 && ct.verbPos == -1 && ct.objPos == -1 && !ct.counted);
+
+
+    assert(order_pattern(0,1,2) == "SVO"); 
+    assert(order_pattern(0,2,1) == "SOV");
+    assert(order_pattern(1,0,2) == "VSO");
+    assert(order_pattern(2,0,1) == "VOS");
+    assert(order_pattern(1,2,0) == "OVS");
+    assert(order_pattern(2,1,0) == "OSV");
+
+    const std::regex OPEN_RE  (R"(\[([A-Za-z]+(?::[a-z])?))");
+    const std::regex CLOSE_RE (R"(([A-Za-z]+)\])");
+    const std::regex ROLE_RE  (R"(\[([A-Za-z]+):([so]))");
+
+    std::string open  = "[S:s]";
+    std::string close = "S]";
+    std::string role  = "[IP:o";
+
+    auto itOpen = std::sregex_iterator(open.begin(),  open.end(),  OPEN_RE );
+    auto itClose= std::sregex_iterator(close.begin(), close.end(), CLOSE_RE);
+    auto itRole = std::sregex_iterator(role.begin(),  role.end(),  ROLE_RE );
+
+    assert(itOpen  != std::sregex_iterator() && (*itOpen)[1].str()  == "S:s");
+    assert(itClose != std::sregex_iterator() && (*itClose)[1].str() == "S"  );
+    assert(itRole  != std::sregex_iterator() && (*itRole)[1].str()  == "IP" && (*itRole)[2].str()=="o");
+
+
+    assert(order_pattern(3,7,5) == "SOV");
+
+}
 
 struct Clause {
     std::string tag;           
@@ -33,6 +78,10 @@ const std::regex ROLE_RE (R"(\[([A-Za-z]+):([so]))");
 
 int main()
 {
+#ifndef SKIP_TESTS
+    run_unit_tests();
+#endif
+
     fs::path dir = "SUSANNE/fc2";
     std::unordered_map<std::string,long> tally;
     long grandTotal = 0;
@@ -83,11 +132,7 @@ int main()
                                   << " @tok " << tokIdx << '\n';
 
                     if (!par.counted && par.subjPos!=-1 && par.verbPos!=-1 && par.objPos!=-1) {
-                        std::vector<std::pair<long,char>> tri = {
-                            {par.subjPos,'S'},{par.verbPos,'V'},{par.objPos,'O'}};
-                        std::sort(tri.begin(),tri.end(),
-                                  [](auto&a,auto&b){return a.first<b.first;});
-                        std::string pat; for (auto&p:tri) pat.push_back(p.second);
+                        std::string pat = order_pattern(par.subjPos, par.verbPos, par.objPos);
                         ++tally[pat]; ++grandTotal;
                         par.counted = true;                          
                         if (DEBUG)
@@ -119,11 +164,7 @@ int main()
                 }
 
                 if (!c.counted && c.subjPos!=-1 && c.verbPos!=-1 && c.objPos!=-1) {
-                    std::vector<std::pair<long,char>> tri = {
-                        {c.subjPos,'S'},{c.verbPos,'V'},{c.objPos,'O'}};
-                    std::sort(tri.begin(),tri.end(),
-                              [](auto&a,auto&b){return a.first<b.first;});
-                    std::string pat; for (auto&p:tri) pat.push_back(p.second);
+                    std::string pat = order_pattern(c.subjPos, c.verbPos, c.objPos);
                     ++tally[pat]; ++grandTotal;
                     c.counted = true;                              
                     if (DEBUG) std::cout << std::string(stack.size(),' ')
@@ -143,11 +184,7 @@ int main()
                         if (!fin.counted &&
                             fin.subjPos!=-1 && fin.verbPos!=-1 && fin.objPos!=-1)
                         {
-                            std::vector<std::pair<long,char>> tri = {
-                                {fin.subjPos,'S'},{fin.verbPos,'V'},{fin.objPos,'O'}};
-                            std::sort(tri.begin(),tri.end(),
-                                      [](auto&a,auto&b){return a.first<b.first;});
-                            std::string pat; for (auto&p:tri) pat.push_back(p.second);
+                            std::string pat = order_pattern(fin.subjPos, fin.verbPos, fin.objPos);
                             ++tally[pat]; ++grandTotal;
                             if (DEBUG) std::cout << std::string(stack.size()+2,' ')
                                                  << "order → " << pat << '\n';
@@ -170,7 +207,7 @@ int main()
         long count = tally[pat];
         double pct = (grandTotal > 0) ? 100.0 * count / grandTotal : 0.0;
         std::cout << pat << ": " << count << " (" << std::fixed
-                  << std::setprecision(2) << pct << "%)\n";
+                  << std::setprecision(2) << pct << "% )\n";
 
         csv << pat << ',' << count << ','                 
             << std::fixed << std::setprecision(2)         

@@ -6,45 +6,41 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <stack>
 #include <filesystem>
 #include <algorithm>
 
 namespace fs = std::filesystem;
 using namespace std;
 
-// Trim whitespace
+// Clause tag regex
+const regex clauseStart(R"(\[(S|Ss|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L))");
+const regex clauseEnd(R"((S|Ss|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L)\])");
+
+// Trims whitespace
 string trim(const string& s) {
     size_t start = s.find_first_not_of(" \t\n\r");
     size_t end = s.find_last_not_of(" \t\n\r");
     return (start == string::npos) ? "" : s.substr(start, end - start + 1);
 }
 
-// Detect SVO order from SUSANNE-like parsed text
-string detectOrderFromSUSANNE(const string& tree) {
-    vector<string> lines;
-    stringstream ss(tree);
-    string line;
-    while (getline(ss, line)) {
-        lines.push_back(line);
-    }
-
+// Detects order inside a clause
+string detectOrderFromSUSANNE(const vector<string>& lines) {
     vector<pair<char, size_t>> elements;
-
     regex subjectTag(R"(:[sS]\b)");
     regex objectTag(R"(:[oO]\b)");
-    regex verbPOS(R"(\tV[BDZGNP][A-Za-z]*\t)");
+    regex verbPOS(R"(\tV[BDZGNP][a-zA-Z]*\t)");
 
     for (size_t i = 0; i < lines.size(); ++i) {
         const string& line = lines[i];
 
-        // Split line into tab-separated fields
+        // Tokenize by tab
         vector<string> fields;
-        stringstream lineStream(line);
+        stringstream ss(line);
         string token;
-        while (getline(lineStream, token, '\t')) {
+        while (getline(ss, token, '\t')) {
             fields.push_back(token);
         }
-
         if (fields.size() < 6) continue;
 
         string posTag = fields[3];
@@ -76,11 +72,8 @@ string detectOrderFromSUSANNE(const string& tree) {
     }
 
     if (order.size() == 3) {
-        cout << "[DEBUG] Order detected: " << order << "\n";
-    } else {
-        cout << "[DEBUG] Incomplete or ambiguous order: " << order << "\n";
+        cout << "[DEBUG] Clause order: " << order << "\n";
     }
-
     return (order.size() == 3) ? order : "";
 }
 
@@ -88,38 +81,62 @@ int main() {
     map<string, int> orderCounts;
     int total = 0;
 
-    string dirPath = "SUZANNE/fs2";
+    string dirPath = "SUSANNE/fc2";
     for (const auto& entry : fs::directory_iterator(dirPath)) {
         if (!entry.is_regular_file()) continue;
 
-        cout << "[DEBUG] Processing file: " << entry.path() << "\n";
-
+        cout << "\n[DEBUG] Reading file: " << entry.path() << "\n";
         ifstream infile(entry.path());
         if (!infile) {
             cerr << "Failed to open file: " << entry.path() << endl;
             continue;
         }
 
-        string line, buffer;
-        while (getline(infile, line)) {
-            buffer += line + "\n";
-            if (line.find("))") != string::npos) {
-                string tree = trim(buffer);
-                cout << "\n[DEBUG] Sentence found:\n" << tree << "\n";
+        string line;
+        vector<string> buffer;
+        stack<string> clauseStack;
+        vector<string> currentClause;
 
-                string order = detectOrderFromSUSANNE(tree);
-                if (order.size() == 3) {
-                    orderCounts[order]++;
-                    total++;
-                    cout << "[DEBUG] Counted order: " << order << "\n\n";
+        while (getline(infile, line)) {
+            buffer.push_back(line);
+            smatch match;
+
+            // Push clause starts
+            if (regex_search(line, match, clauseStart)) {
+                clauseStack.push(match.str(1));
+                currentClause.push_back(line);
+            }
+            // Within a clause
+            else if (!clauseStack.empty()) {
+                currentClause.push_back(line);
+            }
+
+            // Pop clause ends
+            if (regex_search(line, match, clauseEnd)) {
+                if (!clauseStack.empty()) {
+                    string closed = match.str(1);
+                    if (clauseStack.top() == closed) {
+                        clauseStack.pop();
+                    }
                 }
 
-                buffer.clear();
+                if (clauseStack.empty() && !currentClause.empty()) {
+                    cout << "\n[DEBUG] Clause completed. Lines:\n";
+                    for (const string& l : currentClause) cout << l << "\n";
+
+                    string order = detectOrderFromSUSANNE(currentClause);
+                    if (!order.empty()) {
+                        orderCounts[order]++;
+                        total++;
+                    }
+                    currentClause.clear();
+                }
             }
         }
     }
 
-    cout << "\nWord Order Statistics:\n";
+    // Print results
+    cout << "\n=== Word Order Statistics (Clause Level) ===\n";
     vector<string> allOrders = {"SVO", "SOV", "VSO", "VOS", "OVS", "OSV"};
     for (const string& order : allOrders) {
         int count = orderCounts[order];

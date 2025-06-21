@@ -33,10 +33,8 @@ static string detectOrder(const string& tree) {
         elements.emplace_back('V', it->position());
     for (sregex_iterator it(tree.begin(),tree.end(),obj ), end; it!=end; ++it)
         elements.emplace_back('O', it->position());
-    for (sregex_iterator it(tree.begin(),tree.end(),prd ), end; it!=end; ++it){
+    for (sregex_iterator it(tree.begin(),tree.end(),prd ), end; it!=end; ++it)
         elements.emplace_back('O', it->position());
-        cout << "Matched PRD at: " << it->position() << '\n';  
-    }
 
     if (none_of(elements.begin(),elements.end(),[](auto&p){return p.first=='O';})) {
         regex np(R"(\(NP\b)");

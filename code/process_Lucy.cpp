@@ -10,20 +10,16 @@
 
 namespace fs = std::filesystem;
 
-/* ------------------------------------------------------------------ */
-/*                           data structures                          */
-/* ------------------------------------------------------------------ */
 struct Clause {
-    std::string tag;           // S, Fa, O ...
-    long subjPos  = -1;        // first subject token inside clause
-    long verbPos  = -1;        // first verb
-    long objPos   = -1;        // first object
-    bool  counted = false;     // ★ already tallied?                // ★
+    std::string tag;           
+    long subjPos  = -1;      
+    long verbPos  = -1;        
+    long objPos   = -1;       
+    bool  counted = false;     
 };
 
-constexpr bool DEBUG = true;
+constexpr bool DEBUG = false;
 
-/* ------------------------------------------------------------------ */
 const std::unordered_set<std::string> CLAUSE_TAGS = {
     "O","Oh","Ot","Q","I","Iq","Iu",
     "S","Ss","Fa","Fn","Fr","Ff","Fc",
@@ -31,7 +27,6 @@ const std::unordered_set<std::string> CLAUSE_TAGS = {
     "W","A","Z","L"
 };
 
-/* regex helpers */
 const std::regex OPEN_RE (R"(\[([A-Za-z]+(?::[a-z])?))");
 const std::regex CLOSE_RE(R"(([A-Za-z]+)\])");
 const std::regex ROLE_RE (R"(\[([A-Za-z]+):([so]))");
@@ -68,10 +63,9 @@ int main(int argc,char* argv[])
             for (std::string w; iss >> w; ) col.push_back(std::move(w));
             if (col.size() < 6) { ++tokIdx; continue; }
 
-            const std::string& pos      = col[2];   // POS column
-            const std::string& formtags = col[5];   // bracket column
+            const std::string& pos      = col[2];   
+            const std::string& formtags = col[5];  
 
-            /* ------------- handle OPEN brackets (unchanged logic) ------------ */
             for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),OPEN_RE);
                  it != std::sregex_iterator(); ++it)
             {
@@ -93,7 +87,6 @@ int main(int argc,char* argv[])
                                   << "subclause-as-" << (role=='s'?"subject":"object")
                                   << " @tok " << tokIdx << '\n';
 
-                    /* ★ immediate count if parent now complete */
                     if (!par.counted && par.subjPos!=-1 && par.verbPos!=-1 && par.objPos!=-1) {
                         std::vector<std::pair<long,char>> tri = {
                             {par.subjPos,'S'},{par.verbPos,'V'},{par.objPos,'O'}};
@@ -101,7 +94,7 @@ int main(int argc,char* argv[])
                                   [](auto&a,auto&b){return a.first<b.first;});
                         std::string pat; for (auto&p:tri) pat.push_back(p.second);
                         ++tally[pat]; ++grandTotal;
-                        par.counted = true;                           // ★
+                        par.counted = true;                          
                         if (DEBUG)
                             std::cout << std::string(stack.size(),' ')
                                       << "order → " << pat << '\n';
@@ -112,7 +105,6 @@ int main(int argc,char* argv[])
                                      << "[OPEN] " << baseTag << "  @tok " << tokIdx << '\n';
             }
 
-            /* ---------------- classify this lexical token ------------------- */
             if (!stack.empty()) {
                 Clause& c = stack.back();
 
@@ -125,13 +117,12 @@ int main(int argc,char* argv[])
                     std::string tagName = (*m)[1].str();
                     char role          = (*m)[2].str()[0];
 
-                    if (CLAUSE_TAGS.count(tagName)) continue;   // skip clause labels
+                    if (CLAUSE_TAGS.count(tagName)) continue;  
 
                     if (role=='s' && c.subjPos==-1) c.subjPos = tokIdx;
                     if (role=='o' && c.objPos ==-1) c.objPos  = tokIdx;
                 }
 
-                /* ★ count as soon as we have S, V, O for this clause */
                 if (!c.counted && c.subjPos!=-1 && c.verbPos!=-1 && c.objPos!=-1) {
                     std::vector<std::pair<long,char>> tri = {
                         {c.subjPos,'S'},{c.verbPos,'V'},{c.objPos,'O'}};
@@ -139,13 +130,12 @@ int main(int argc,char* argv[])
                               [](auto&a,auto&b){return a.first<b.first;});
                     std::string pat; for (auto&p:tri) pat.push_back(p.second);
                     ++tally[pat]; ++grandTotal;
-                    c.counted = true;                               // ★
+                    c.counted = true;                              
                     if (DEBUG) std::cout << std::string(stack.size(),' ')
                                          << "order → " << pat << '\n';
                 }
             }
 
-            /* ------------- handle CLOSE brackets (skip double count) -------- */
             for (auto it = std::sregex_iterator(formtags.begin(),formtags.end(),CLOSE_RE);
                  it != std::sregex_iterator(); ++it)
             {
@@ -155,7 +145,6 @@ int main(int argc,char* argv[])
                 while (!stack.empty()) {
                     Clause fin = stack.back(); stack.pop_back();
                     if (fin.tag == close) {
-                        /* no need to count here if already tallied */          // ★
                         if (!fin.counted &&
                             fin.subjPos!=-1 && fin.verbPos!=-1 && fin.objPos!=-1)
                         {
@@ -176,7 +165,6 @@ int main(int argc,char* argv[])
         }
     }
 
-    /* ------------------------------------------------------------------ */
     std::cout << "\n===== Word‑order distribution =====\n";
     if (grandTotal==0) { std::cout << "No complete S–V–O triples were found.\n"; return 0; }
 

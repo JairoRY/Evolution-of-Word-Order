@@ -102,12 +102,12 @@ int main() {
         }
     }
 
-    cout << "\n===== Word-order distribution =====\n";
+    cout << "\nWord Order Statistics:\n";
     vector<string> allOrders = {"SVO", "SOV", "VSO", "VOS", "OVS", "OSV"};
     for (const string& order : allOrders) {
         int count = orderCounts[order];
         double percent = (total > 0) ? 100.0 * count / total : 0.0;
-        cout << order << "\t" << count << "\t" << percent << "%\n";
+        cout << order << ": " << count << " (" << percent << "%)\n";
     }
 
     return 0;

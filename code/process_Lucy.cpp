@@ -30,7 +30,6 @@ string detectOrderFromSUSANNE(const string& tree) {
 
     vector<pair<char, size_t>> elements;
 
-    // More forgiving regex for subject/object and verb tags
     regex subjectTag(R"(:[sS]\b)");
     regex objectTag(R"(:[oO]\b)");
     regex verbPOS(R"(\tV[BDZGNP][A-Za-z]*\t)");
@@ -48,24 +47,25 @@ string detectOrderFromSUSANNE(const string& tree) {
 
         if (fields.size() < 6) continue;
 
-        string posTag = fields[3];     // POS tag field
-        string parseField = fields[5]; // Parse field
+        string posTag = fields[3];
+        string parseField = fields[5];
 
         if (regex_search(parseField, subjectTag)) {
             elements.emplace_back('S', i);
+            cout << "[DEBUG] Subject found on line " << i << ": " << line << "\n";
         } else if (regex_search(parseField, objectTag)) {
             elements.emplace_back('O', i);
+            cout << "[DEBUG] Object found on line " << i << ": " << line << "\n";
         } else if (regex_match("\t" + posTag + "\t", verbPOS)) {
             elements.emplace_back('V', i);
+            cout << "[DEBUG] Verb found on line " << i << ": " << line << "\n";
         }
     }
 
-    // Sort elements by line position
     sort(elements.begin(), elements.end(), [](auto& a, auto& b) {
         return a.second < b.second;
     });
 
-    // Construct order string without duplicates
     string order;
     set<char> seen;
     for (auto& [ch, _] : elements) {
@@ -75,6 +75,12 @@ string detectOrderFromSUSANNE(const string& tree) {
         }
     }
 
+    if (order.size() == 3) {
+        cout << "[DEBUG] Order detected: " << order << "\n";
+    } else {
+        cout << "[DEBUG] Incomplete or ambiguous order: " << order << "\n";
+    }
+
     return (order.size() == 3) ? order : "";
 }
 
@@ -82,9 +88,11 @@ int main() {
     map<string, int> orderCounts;
     int total = 0;
 
-    string dirPath = "pceec2-main/data/parsed/";
+    string dirPath = "SUZANNE/fs2";
     for (const auto& entry : fs::directory_iterator(dirPath)) {
         if (!entry.is_regular_file()) continue;
+
+        cout << "[DEBUG] Processing file: " << entry.path() << "\n";
 
         ifstream infile(entry.path());
         if (!infile) {
@@ -94,21 +102,24 @@ int main() {
 
         string line, buffer;
         while (getline(infile, line)) {
-            buffer += line + "\n"; // preserve line breaks
-            if (line.find("))") != string::npos) {  // crude sentence boundary
+            buffer += line + "\n";
+            if (line.find("))") != string::npos) {
                 string tree = trim(buffer);
+                cout << "\n[DEBUG] Sentence found:\n" << tree << "\n";
+
                 string order = detectOrderFromSUSANNE(tree);
                 if (order.size() == 3) {
                     orderCounts[order]++;
                     total++;
+                    cout << "[DEBUG] Counted order: " << order << "\n\n";
                 }
+
                 buffer.clear();
             }
         }
     }
 
-    // Print results
-    cout << "Word Order Statistics:\n";
+    cout << "\nWord Order Statistics:\n";
     vector<string> allOrders = {"SVO", "SOV", "VSO", "VOS", "OVS", "OSV"};
     for (const string& order : allOrders) {
         int count = orderCounts[order];

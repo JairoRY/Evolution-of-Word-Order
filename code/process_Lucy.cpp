@@ -14,16 +14,21 @@
 namespace fs = std::filesystem;
 using namespace std;
 
-// Clause tags as defined in the user's problem description.
-const string CLAUSE_TAG_PATTERN = "S|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L";
+const std::string CLAUSE_TAG_PATTERN =
+    "S|Fa|Fn|Fr|Ff|Fc|Tg|Tn|Ti|Tf|Tb|Tq|W|A|Z|L";
 
-// Corrected Regex to find the start of a clause, e.g., [S or [Fa:
-// This version puts the pattern inside the capturing group.
-const regex clauseStartRegex(R"(\[(` + CLAUSE_TAG_PATTERN + R")(?![A-Za-z0-9_]))");
+/* A clause starts with “[TAG” where TAG is one of the above and is immediately
+   followed by a non‑word char such as ‘[’, ‘:’, ‘.’, etc. */
+const std::string clauseStartPattern =
+    "\\[(" + CLAUSE_TAG_PATTERN + ")(?=[^A-Za-z0-9_])";
 
-// Corrected Regex to find the end of a clause, e.g., S] or :Fa]
-// This version avoids the unsupported lookbehind `(?<!)` and correctly captures the tag.
-const regex clauseEndRegex(R"((?:[^A-Za-z0-9_]|^)(` + CLAUSE_TAG_PATTERN + R")\])");
+/* A clause ends with “TAG]” where TAG is one of the above.  We do not care
+   what follows after the ]. */
+const std::string clauseEndPattern =
+    "(" + CLAUSE_TAG_PATTERN + ")\\]";
+
+const std::regex clauseStartRegex(clauseStartPattern);
+const std::regex clauseEndRegex  (clauseEndPattern);
 
 /**
  * @brief Analyzes a set of lines belonging to a single clause to determine the order of Subject (S), Verb (V), and Object (O).

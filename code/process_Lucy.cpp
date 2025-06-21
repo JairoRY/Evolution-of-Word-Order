@@ -31,14 +31,9 @@ const std::regex OPEN_RE (R"(\[([A-Za-z]+(?::[a-z])?))");
 const std::regex CLOSE_RE(R"(([A-Za-z]+)\])");
 const std::regex ROLE_RE (R"(\[([A-Za-z]+):([so]))");
 
-int main(int argc,char* argv[])
+int main()
 {
-    if (argc < 2) {
-        std::cout << "Usage: " << argv[0] << "  <path-to-SUSANNE/fc2>\n";
-        return 1;
-    }
-
-    fs::path dir = argv[1];
+    fs::path dir = "SUSANNE/fc2";
     std::unordered_map<std::string,long> tally;
     long grandTotal = 0;
 

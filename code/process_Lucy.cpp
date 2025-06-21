@@ -121,11 +121,12 @@ int main() {
         }
 
         string line;
-        // Stack to store clause tag and the starting line index of its *content* in the global buffer
         stack<pair<string, size_t>> clauseStack;
-        vector<string> globalLinesBuffer; // Buffer to hold all lines of the current file being processed
+        vector<string> globalLinesBuffer;
+        size_t currentFileLinesProcessed = 0; // Keep track of lines read per file for debugging
 
         while (getline(infile, line)) {
+            currentFileLinesProcessed++;
             globalLinesBuffer.push_back(line);
             size_t currentLineIndexInGlobalBuffer = globalLinesBuffer.size() - 1;
 
@@ -135,7 +136,24 @@ int main() {
             while (getline(ss, token, '\t')) {
                 fields.push_back(token);
             }
-            string parseField = (fields.size() >= 6) ? fields[5] : "";
+            string parseField = "";
+            if (fields.size() >= 6) {
+                parseField = fields[5];
+            } else {
+                // If fields.size() < 6, it's not a data line or malformed, but could still contain relevant tags if
+                // SUSANNE files have lines with tags outside of the 6th field (unlikely based on snippets).
+                // However, for consistency with parsing S/V/O, we focus on the parseField.
+                // Output debug info for these lines
+                cout << "[DEBUG] Line " << currentLineIndexInGlobalBuffer << " in " << entry.path().filename() << " has < 6 fields. Skipping parseField analysis for SVO detection.\n";
+            }
+            
+            // Add a debug print for parseField content
+            if (!parseField.empty()) {
+                cout << "[DEBUG] Line " << currentLineIndexInGlobalBuffer << " ParseField: '" << parseField << "'\n";
+            } else {
+                 cout << "[DEBUG] Line " << currentLineIndexInGlobalBuffer << " ParseField is empty or not applicable.\n";
+            }
+
 
             // --- Process closing tags first to ensure inner clauses are processed before outer ones ---
             // Use sregex_iterator to find all matches for clauseEndRegex on the current line.
@@ -146,12 +164,18 @@ int main() {
             }
             reverse(closingTagsOnLine.begin(), closingTagsOnLine.end()); 
 
+            if (!closingTagsOnLine.empty()) {
+                cout << "[DEBUG] Found " << closingTagsOnLine.size() << " closing clause tags on line " << currentLineIndexInGlobalBuffer << ": ";
+                for (const string& tag : closingTagsOnLine) cout << tag << " ";
+                cout << "\n";
+            }
+
             for (const string& endTag : closingTagsOnLine) {
                 if (!clauseStack.empty() && clauseStack.top().first == endTag) {
                     pair<string, size_t> completedClause = clauseStack.top();
                     clauseStack.pop();
 
-                    cout << "[DEBUG] Clause END matched: " << completedClause.first << " at global line " << currentLineIndexInGlobalBuffer << ".\n";
+                    cout << "[DEBUG] Clause END matched and popped: " << completedClause.first << " at global line " << currentLineIndexInGlobalBuffer << ".\n";
                     
                     // Extract lines belonging to this completed clause.
                     // Slice from the global buffer using the stored start index and current line index.
@@ -166,20 +190,39 @@ int main() {
                             orderCounts[order]++;
                             total++;
                         }
+                    } else {
+                        cout << "[DEBUG] Extracted clauseLines is empty for clause type " << completedClause.first << ".\n";
                     }
                 } else {
                     cout << "[WARNING] Mismatched or unexpected clause end tag: " << endTag << " at global line " << currentLineIndexInGlobalBuffer << ".\n";
+                    if (!clauseStack.empty()) {
+                        cout << "[WARNING] Expected tag on stack top: " << clauseStack.top().first << ".\n";
+                    } else {
+                        cout << "[WARNING] Clause stack is empty.\n";
+                    }
                 }
             }
 
             // --- Process opening tags ---
             // Use sregex_iterator to find all matches for clauseStartRegex on the current line.
-            for (sregex_iterator it_start(parseField.begin(), parseField.end(), clauseStartRegex), end_start; it_start != end_start; ++it_start) {
-                string startTag = (*it_start)[1].str();
+            vector<string> openingTagsOnLine;
+            for (sregex_iterator it_start(parseField.begin(), parseField.end(), clauseStartRegex), end_start; it != end_start; ++it_start) {
+                openingTagsOnLine.push_back((*it_start)[1].str());
+            }
+
+            if (!openingTagsOnLine.empty()) {
+                cout << "[DEBUG] Found " << openingTagsOnLine.size() << " opening clause tags on line " << currentLineIndexInGlobalBuffer << ": ";
+                for (const string& tag : openingTagsOnLine) cout << tag << " ";
+                cout << "\n";
+            }
+
+            for (const string& startTag : openingTagsOnLine) {
                 clauseStack.push({startTag, currentLineIndexInGlobalBuffer}); // Push tag and its starting line index
-                cout << "[DEBUG] Clause START detected: [" << startTag << " in file " << entry.path().filename() << " at global line " << currentLineIndexInGlobalBuffer << "]\n";
+                cout << "[DEBUG] Clause START pushed: [" << startTag << " in file " << entry.path().filename() << " at global line " << currentLineIndexInGlobalBuffer << "]\n";
             }
         } // End of while (getline(infile, line))
+        cout << "[DEBUG] Finished processing " << currentFileLinesProcessed << " lines for file: " << entry.path().filename() << "\n";
+
 
         // After reading all lines, process any remaining open clauses (should be none for well-formed files)
         while (!clauseStack.empty()) {

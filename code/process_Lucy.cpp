@@ -165,13 +165,15 @@ int main(int argc,char* argv[])
         }
     }
 
-    std::cout << "\n===== Word‑order distribution =====\n";
-    if (grandTotal==0) { std::cout << "No complete S–V–O triples were found.\n"; return 0; }
+    std::cout << "\nWord Order Statistics:\n";              
+    std::vector<std::string> allOrders =                    
+        {"SVO","SOV","VSO","VOS","OVS","OSV"};
 
-    std::cout << std::fixed << std::setprecision(2);
-    for (auto& kv : tally) {
-        double pct = 100.0 * kv.second / grandTotal;
-        std::cout << kv.first << '\t' << kv.second << '\t' << pct << "%\n";
+    for (const std::string& pat : allOrders) {
+        long count = tally[pat];
+        double pct = (grandTotal > 0) ? 100.0 * count / grandTotal : 0.0;
+        std::cout << pat << ": " << count << " (" << std::fixed
+                  << std::setprecision(2) << pct << "%)\n";
     }
     return 0;
 }

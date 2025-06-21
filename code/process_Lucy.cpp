@@ -27,9 +27,9 @@ string trim(const string& s) {
 // Detects order inside a clause
 string detectOrderFromSUSANNE(const vector<string>& lines) {
     vector<pair<char, size_t>> elements;
-    regex subjectTag(R"(:[sS]\b)");
-    regex objectTag(R"(:[oO]\b)");
-    regex verbPOS(R"(\tV[BDZGNP][a-zA-Z]*\t)");
+    regex subjectTag(R"(:[s]\b)");
+    regex objectTag(R"(:[o]\b)");
+    regex verbPOS(R"(^VV[BDGNZ]?|^VM|^VH)");
 
     for (size_t i = 0; i < lines.size(); ++i) {
         const string& line = lines[i];
@@ -52,7 +52,7 @@ string detectOrderFromSUSANNE(const vector<string>& lines) {
         } else if (regex_search(parseField, objectTag)) {
             elements.emplace_back('O', i);
             cout << "[DEBUG] Object found on line " << i << ": " << line << "\n";
-        } else if (regex_match("\t" + posTag + "\t", verbPOS)) {
+        } else if (regex_search(posTag, verbPOS)) {
             elements.emplace_back('V', i);
             cout << "[DEBUG] Verb found on line " << i << ": " << line << "\n";
         }

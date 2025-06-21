@@ -25,8 +25,7 @@ static string detectOrder(const string& tree) {
     regex subj(R"(\(NP-SBJ\b)");                 
     regex verb(R"(\((VB[DPZGN]?|BE[DPN]|BAG|HV[PDZ]?)\b)"); 
     regex obj (R"(\(NP-OB1\b|\(NP-OBJ\b)");    
-    //regex prd (R"(\((NP|ADJP|PP)-PRD\b)");        
-    regex prd(R"(\(\s*(?:NP|ADJP|PP)-PRD\b)");
+    regex prd (R"(\((NP|ADJP|PP)-PRD\b)");   
     
     for (sregex_iterator it(tree.begin(),tree.end(),subj), end; it!=end; ++it)
         elements.emplace_back('S', it->position());
@@ -34,8 +33,10 @@ static string detectOrder(const string& tree) {
         elements.emplace_back('V', it->position());
     for (sregex_iterator it(tree.begin(),tree.end(),obj ), end; it!=end; ++it)
         elements.emplace_back('O', it->position());
-    for (sregex_iterator it(tree.begin(),tree.end(),prd ), end; it!=end; ++it)
+    for (sregex_iterator it(tree.begin(),tree.end(),prd ), end; it!=end; ++it){
         elements.emplace_back('O', it->position());
+        cout << "Matched PRD at: " << it->position() << '\n';  
+    }
 
     if (none_of(elements.begin(),elements.end(),[](auto&p){return p.first=='O';})) {
         regex np(R"(\(NP\b)");

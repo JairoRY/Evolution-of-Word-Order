@@ -1,82 +1,105 @@
-install.packages("fmsb")
-# Load required packages
+# 0. Packages 
 library(ggplot2)
 library(readr)
 library(dplyr)
 library(tidyr)
-library(scales)
-library(fmsb) 
+library(scales) 
+#install.packages("fmsb")
+library(fmsb)
 
-# Read both CSV files
-ModernEnglish <- read_csv("word_order_stats_Susanne.csv")
-OldEnglish <- read_csv("word_order_stats_PCEEC.csv")
+# 1. Read data ---------------------------------------------------
+ModernEnglish <- read_csv("word_order_stats_Susanne.csv") %>%
+  mutate(Corpus = "ModernEnglish")
 
-# Add corpus label
-ModernEnglish$Corpus <- "ModernEnglish"
-OldEnglish$Corpus <- "OldEnglish"
+OldEnglish    <- read_csv("word_order_stats_PCEEC.csv") %>%
+  mutate(Corpus = "OldEnglish")
 
-# Combine for comparison
 all_data <- bind_rows(ModernEnglish, OldEnglish)
 
-# 1. BAR CHART: Word order distribution per corpus
-ggplot(all_data, aes(x = Order, y = Percent, fill = Corpus)) +
+# 2. BAR CHART (percentage, side‑by‑side) -----------------------
+bar_plot <- ggplot(all_data,
+                   aes(x = Order, y = Percent, fill = Corpus)) +
   geom_col(position = "dodge") +
-  labs(title = "Word Order Frequency by Corpus", y = "Percentage") +
+  scale_y_continuous(labels = percent_format(scale = 1)) +
+  labs(title = "Word‑order frequency by corpus",
+       y = "Percentage of clauses") +
   theme_minimal()
 
-# 2. PIE CHART: Modern English word order proportions
-ModernEnglish %>%
-  mutate(label = paste0(Order, ": ", round(Percent, 1), "%")) %>%
-  ggplot(aes(x = "", y = Percent, fill = label)) +  # use label in legend
-  geom_bar(stat = "identity", width = 1) +
+ggsave("bar_word_order.pdf", bar_plot,
+       device = cairo_pdf, width = 5, height = 4)
+
+# 3. PIE CHARTS (legend only) ------------------------------------
+pie_mod <- ModernEnglish %>%
+  mutate(lbl = paste0(Order, ": ", round(Percent, 1), "%")) %>%
+  ggplot(aes(x = "", y = Percent, fill = lbl)) +
+  geom_col(width = 1, color = "white") +
   coord_polar("y") +
-  labs(title = "Modern English Word Order Proportions", fill = "Word Order") +
+  labs(title = "Modern English word‑order proportions",
+       fill = NULL) +
   theme_void() +
   theme(legend.position = "right")
 
-# 2. PIE CHART: Old English word order proportions
-OldEnglish %>%
-  mutate(label = paste0(Order, ": ", round(Percent, 1), "%")) %>%
-  ggplot(aes(x = "", y = Percent, fill = label)) +  # use label in legend
-  geom_bar(stat = "identity", width = 1) +
+ggsave("pie_modern_english.pdf", pie_mod,
+       device = cairo_pdf, width = 4, height = 4)
+
+pie_old <- OldEnglish %>%
+  mutate(lbl = paste0(Order, ": ", round(Percent, 1), "%")) %>%
+  ggplot(aes(x = "", y = Percent, fill = lbl)) +
+  geom_col(width = 1, color = "white") +
   coord_polar("y") +
-  labs(title = "Old English Word Order Proportions", fill = "Word Order") +
+  labs(title = "Old English word‑order proportions",
+       fill = NULL) +
   theme_void() +
   theme(legend.position = "right")
 
-# 3. SIDE-BY-SIDE COMPARISON (Percent)
-ggplot(all_data, aes(x = Order, y = Percent, fill = Corpus)) +
-  geom_col(position = "dodge") +
-  labs(title = "Relative Word Order Usage", y = "Percentage") +
-  theme_minimal()
+ggsave("pie_old_english.pdf", pie_old,
+       device = cairo_pdf, width = 4, height = 4)
 
-# 4. RADAR CHART (OPTIONAL, more visual)
-# Prepare radar input
-radar_df <- all_data %>%
-  select(Order, Percent, Corpus) %>%
-  pivot_wider(names_from = Order, values_from = Percent, values_fill = 0)
-
-radar_data <- as.data.frame(rbind(rep(100, 6), rep(0, 6), radar_df[,-1]))
-rownames(radar_data) <- c("Max", "Min", radar_df$Corpus)
-
-radarchart(radar_data,
-           axistype = 1,
-           pcol = c("red", "blue"),
-           plwd = 2,
-           plty = 1,
-           cglcol = "grey", cglty = 1,
-           axislabcol = "black", caxislabels = seq(0, 100, 20), cglwd = 0.8,
-           vlcex = 0.8)
-legend("topright", legend = radar_df$Corpus, col = c("red", "blue"), lty = 1, lwd = 2)
-
-# 5. CUMULATIVE % PLOT (sorted by freq)
-all_data %>%
+# 4. CUMULATIVE COVERAGE -----------------------------------------
+cum_plot <- all_data %>%
   group_by(Corpus) %>%
   arrange(desc(Percent)) %>%
   mutate(Cumulative = cumsum(Percent)) %>%
-  ggplot(aes(x = reorder(Order, -Percent), y = Cumulative, group = Corpus, color = Corpus)) +
+  ggplot(aes(x = reorder(Order, -Percent),
+             y = Cumulative,
+             group = Corpus,
+             color = Corpus)) +
   geom_line(size = 1.2) +
   geom_point() +
-  labs(title = "Cumulative Word Order Coverage", y = "Cumulative %") +
+  scale_y_continuous(labels = percent_format(scale = 1),
+                     limits = c(0, 100)) +
+  labs(title = "Cumulative coverage of word‑order patterns",
+       y = "Cumulative % of clauses", x = "Order") +
   theme_minimal()
+
+ggsave("cumulative_word_order.pdf", cum_plot,
+       device = cairo_pdf, width = 5, height = 4)
+
+# 5. RADAR (optional, visual) ------------------------------------
+#    Radar needs both rows (max/min) + corpora rows
+radar_df <- all_data %>%
+  select(Order, Percent, Corpus) %>%
+  pivot_wider(names_from = Order, values_from = Percent,
+              values_fill = 0)
+
+radar_data <- rbind(
+  Max = rep(100, ncol(radar_df) - 1),
+  Min = rep(0,   ncol(radar_df) - 1),
+  radar_df[,-1]
+)
+rownames(radar_data)[3:4] <- radar_df$Corpus
+
+# customise colours
+par(family = "sans")
+cairo_pdf("radar_word_order.pdf", width = 5, height = 5)   # vector PDF
+radarchart(radar_data,
+           axistype = 1,
+           pcol = c("#E41A1C", "#377EB8"), plwd = 2, plty = 1,
+           cglcol = "grey70", cglty = 1, cglwd = 0.8,
+           axislabcol = "grey50", caxislabels = seq(0, 100, 20),
+           vlcex = 0.8)
+legend("topright", legend = radar_df$Corpus,
+       col = c("#E41A1C", "#377EB8"), lty = 1, lwd = 2, bty = "n")
+dev.off()
+
 
